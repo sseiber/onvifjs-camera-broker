@@ -1,0 +1,238 @@
+---
+# Source: akri/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: akri-controller-sa
+---
+# Source: akri/templates/rbac.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: akri-agent-sa
+---
+# Source: akri/templates/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: "akri-controller-role"
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs:
+      [
+        "get",
+        "list",
+        "watch",
+        "create",
+        "update",
+        "patch",
+        "delete",
+        "deletecollection",
+      ]
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["akri.sh"]
+    resources: ["instances"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["akri.sh"]
+    resources: ["configurations"]
+    verbs: ["get", "list", "watch"]
+---
+# Source: akri/templates/rbac.yaml
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: "akri-agent-role"
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["akri.sh"]
+    resources: ["instances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["akri.sh"]
+    resources: ["configurations"]
+    verbs: ["get", "list", "watch"]
+---
+# Source: akri/templates/rbac.yaml
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "akri-controller-binding"
+  namespace: default
+roleRef:
+  apiGroup: ""
+  kind: "ClusterRole"
+  name: "akri-controller-role"
+subjects:
+  - kind: "ServiceAccount"
+    name: "akri-controller-sa"
+    namespace: default
+---
+# Source: akri/templates/rbac.yaml
+apiVersion: "rbac.authorization.k8s.io/v1"
+kind: "ClusterRoleBinding"
+metadata:
+  name: "akri-agent-binding"
+  namespace: default
+roleRef:
+  apiGroup: ""
+  kind: "ClusterRole"
+  name: "akri-agent-role"
+subjects:
+  - kind: "ServiceAccount"
+    name: "akri-agent-sa"
+    namespace: default
+---
+# Source: akri/templates/agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: akri-agent-daemonset
+spec:
+  selector:
+    matchLabels:
+      name: akri-agent
+  template:
+    metadata:
+      labels:
+        name: akri-agent
+    spec:
+      nodeSelector:
+        "kubernetes.io/os": linux
+      serviceAccountName: "akri-agent-sa"
+      containers:
+        - name: akri-agent
+          image: "ghcr.io/project-akri/akri/agent:v0.8.23"
+          resources:
+            requests:
+              memory: 11Mi
+              cpu: 10m
+            limits:
+              memory: 79Mi
+              cpu: 26m
+          env:
+            - name: HOST_CRICTL_PATH
+              value: /usr/local/bin/crictl
+            - name: HOST_RUNTIME_ENDPOINT
+              value: unix:///host/run/containerd/containerd.sock
+            - name: HOST_IMAGE_ENDPOINT
+              value: unix:///host/run/containerd/containerd.sock
+            - name: AGENT_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: DISCOVERY_HANDLERS_DIRECTORY
+              value: /var/lib/akri
+          volumeMounts:
+            - name: discovery-handlers
+              mountPath: /var/lib/akri
+            - name: device-plugin
+              mountPath: /var/lib/kubelet/device-plugins
+            - name: var-run-dockershim
+              mountPath: /host/run/containerd/containerd.sock
+      imagePullSecrets:
+        - name: onvifjs-acr-access
+      volumes:
+        - name: discovery-handlers
+          hostPath:
+            path: /var/lib/akri
+        - name: device-plugin
+          hostPath:
+            path: "/var/lib/kubelet/device-plugins"
+        - name: var-run-dockershim
+          hostPath:
+            path: "/var/snap/microk8s/common/run/containerd.sock"
+---
+# Source: akri/templates/custom-discovery-handler.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: akri-onvifjs-discovery-daemonset
+spec:
+  selector:
+    matchLabels:
+      name: akri-onvifjs-discovery
+  template:
+    metadata:
+      labels:
+        name: akri-onvifjs-discovery
+    spec:
+      hostNetwork: true
+      containers:
+        - name: akri-onvifjs-discovery
+          image: "iotccrscotts.azurecr.io/akri-onvifjs-camera-broker:latest"
+          resources:
+            requests:
+              memory: 11Mi
+              cpu: 10m
+            limits:
+              memory: 24Mi
+              cpu: 24m
+          env:
+            - name: DISCOVERY_HANDLERS_DIRECTORY
+              value: /var/lib/akri
+          volumeMounts:
+            - name: discovery-handlers
+              mountPath: /var/lib/akri
+      imagePullSecrets:
+        - name: onvifjs-acr-access
+      volumes:
+        - name: discovery-handlers
+          hostPath:
+            path: /var/lib/akri
+---
+# Source: akri/templates/controller.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: akri-controller-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: akri-controller
+  template:
+    metadata:
+      labels:
+        app: akri-controller
+    spec:
+      serviceAccountName: "akri-controller-sa"
+      containers:
+        - name: akri-controller
+          image: "ghcr.io/project-akri/akri/controller:v0.8.23"
+          resources:
+            requests:
+              memory: 11Mi
+              cpu: 10m
+            limits:
+              memory: 100Mi
+              cpu: 26m
+      imagePullSecrets:
+        - name: onvifjs-acr-access
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+      nodeSelector:
+        "kubernetes.io/os": linux
+---
+# Source: akri/templates/custom-configuration.yaml
+apiVersion: akri.sh/v0
+kind: Configuration
+metadata:
+  name: akri-onvifjs
+spec:
+  discoveryHandler:
+    name: onvifjs
+    discoveryDetails: '{"timeoutSeconds":5,"ipAddresses":{"action":"include","items":["10.10.16.1","10.10.16.2"]},"macAddresses":{"action":"exclude","items":["aa:bb:cc:11:22:33"]}}'
+  brokerProperties:
+    PROFILE_NAME: "profile1_h264"
+    FRAMES_PER_SECOND: "2"
+    DETECTOR_MODEL: "object"
+    DECTOR_LABEL: "person"
+  capacity: 1
