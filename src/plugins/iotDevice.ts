@@ -37,6 +37,33 @@ const PluginName = 'IotDevicePlugin';
 const ModuleName = 'IotDevicePluginModule';
 const defaultHealthCheckRetries = 3;
 
+export enum DeviceCredentialType {
+    None = 0,
+    X509Certificate = 1,
+    SymmetricKey = 2
+}
+
+export interface IDeviceCredentials {
+    idScope?: string;
+    primaryKey?: string;
+    secondaryKey?: string;
+    type?: DeviceCredentialType;
+    x509Certificate?: Uint8Array | string;
+}
+
+export interface IDeviceProvisionInfo {
+    deviceId: string;
+    deviceCredentials: IDeviceCredentials;
+}
+
+export interface IProvisionResult {
+    dpsProvisionStatus: boolean;
+    dpsProvisionMessage: string;
+    dpsHubConnectionString: string;
+    clientConnectionStatus: boolean;
+    clientConnectionMessage: string;
+}
+
 export interface IClientConnectResult {
     clientConnectionStatus: boolean;
     clientConnectionMessage: string;
@@ -148,16 +175,9 @@ class IotDevicePluginModule implements IIotDevicePlugin {
         try {
             await this.options.initializeDevice();
 
-            for (let connectCount = 1; !result && connectCount <= 3; connectCount++) {
-                result = await this.connectDevice();
+            const provisionResult = await this.connectDevice(deviceProvisionInfo);
 
-                if (!result) {
-                    this.server.log([ModuleName, 'error'], `Connect client attempt failed (${connectCount} of 3)${connectCount < 3 ? ' - retry in 5 seconds' : ''}`);
-                    await sleep(5000);
-                }
-            }
-
-            if (result) {
+            if (provisionResult.dpsProvisionStatus && provisionResult.clientConnectionStatus) {
                 await this.deferredStart.promise;
 
                 await this.options.onDeviceReady();
@@ -176,6 +196,11 @@ class IotDevicePluginModule implements IIotDevicePlugin {
                 await this.sendMessage({
                     [IotDeviceCapability.evDeviceStarted]: 'Device initialization'
                 });
+            }
+            else {
+                result = false;
+
+                this.server.log([ModuleName, 'info'], `clientConnectionStatus: ${provisionResult.clientConnectionStatus}, clientConnectionMessage: ${provisionResult.clientConnectionMessage}`);
             }
         }
         catch (ex) {
@@ -288,8 +313,7 @@ class IotDevicePluginModule implements IIotDevicePlugin {
             dpsProvisionMessage: '',
             dpsHubConnectionString: '',
             clientConnectionStatus: false,
-            clientConnectionMessage: '',
-            cameraDevice: null
+            clientConnectionMessage: ''
         };
 
         try {
@@ -305,8 +329,11 @@ class IotDevicePluginModule implements IIotDevicePlugin {
 
                 const dpsResult = await provisioningClient.register();
 
-                // eslint-disable-next-line max-len
-                dpsConnectionString = `HostName=${(dpsResult as RegistrationResult).assignedHub};DeviceId=${(dpsResult as RegistrationResult).deviceId};SharedAccessKey=${deviceProvisionInfo.deviceCredentials.primaryKey}`;
+                const hostnameSegment = `HostName=${(dpsResult as RegistrationResult).assignedHub}`;
+                const deviceIdSegment = `DeviceId=${(dpsResult as RegistrationResult).deviceId}`;
+                const securitySegment = `SharedAccessKey=${deviceProvisionInfo.deviceCredentials.primaryKey}`;
+
+                dpsConnectionString = `${hostnameSegment};${deviceIdSegment};${securitySegment}`;
 
                 this.server.log([ModuleName, 'info'], `register device client succeeded`);
             }
@@ -355,6 +382,7 @@ class IotDevicePluginModule implements IIotDevicePlugin {
 
         try {
             this.deviceClient = await DeviceClient.fromConnectionString(dpsHubConnectionString, IoTHubTransport);
+
             if (!this.deviceClient) {
                 result.clientConnectionStatus = false;
                 result.clientConnectionMessage = `Failed to connect device client interface from connection string - device: ${this.deviceProvisionInfo.deviceId}`;

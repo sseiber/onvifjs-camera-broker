@@ -12,42 +12,9 @@ import {
     IDeviceCommandResponse
 } from '../plugins/iotDevice';
 import { HealthState } from './health';
-import {
-    OpcPublisherNodesRequest
-} from '../common/miab';
 import { emptyObj } from 'src/utils';
 
 const ModuleName = 'CameraBrokerService';
-
-enum DeviceCredentialType {
-    None = 0,
-    X509Certificate = 1,
-    SymmetricKey = 2
-}
-
-interface IDeviceCredentials {
-    idScope?: string;
-    primaryKey?: string;
-    secondaryKey?: string;
-    type?: DeviceCredentialType;
-    x509Certificate?: Uint8Array | string;
-}
-
-export interface IDeviceProvisionInfo {
-    deviceId: string;
-    modelId: string;
-    deviceCredentials: IDeviceCredentials;
-    opcPublisherNodesRequest: OpcPublisherNodesRequest;
-}
-
-interface IProvisionResult {
-    dpsProvisionStatus: boolean;
-    dpsProvisionMessage: string;
-    dpsHubConnectionString: string;
-    clientConnectionStatus: boolean;
-    clientConnectionMessage: string;
-    cameraDevice: CameraDevice;
-}
 
 enum CameraBrokerCapability {
     evStartVideoStream = 'evStartVideoStream',

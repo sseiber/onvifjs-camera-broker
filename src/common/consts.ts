@@ -1,5 +1,12 @@
 export const ENV_POD_IP_ADDRESS = 'POD_IP';
 
+export const ENV_DEVICE_ID = '';
+export const ENV_DEVICE_PROVISION_TYPE = '';
+export const ENV_DEVICE_PROVISION_CONNECTION_STRING = '';
+export const ENV_DEVICE_PROVISION_ID_SCOPE = '';
+export const ENV_DEVICE_PROVISION_KEY = '';
+export const ENV_DEVICE_PROVISION_CERT = '';
+
 export const ENV_AXIS_1367_USERNAME = 'axis1367Username';
 export const ENV_AXIS_1367_PASSWORD = 'axis1367Password';
 export const ENV_AMCREST_IP4M_USERNAME = 'amcrestIP4mUsername';

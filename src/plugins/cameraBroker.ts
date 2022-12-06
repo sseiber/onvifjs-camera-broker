@@ -1,6 +1,16 @@
 import { HapiPlugin, inject } from 'spryly';
 import { Server } from '@hapi/hapi';
 import {
+    IDeviceProvisionInfo,
+    ENV_DEVICE_ID,
+    ENV_DEVICE_PROVISION_TYPE,
+    ENV_DEVICE_PROVISION_CONNECTION_STRING,
+    ENV_DEVICE_PROVISION_ID_SCOPE,
+    ENV_DEVICE_PROVISION_KEY,
+    ENV_DEVICE_PROVISION_CERT,
+    DeviceCredentialType
+} from '../common/consts';
+import {
     IIotDevicePluginOptions,
     iotDevicePluginModule
 } from './iotDevice';
@@ -17,12 +27,19 @@ declare module '@hapi/hapi' {
 const ModuleName = 'CameraBrokerPluginModule';
 
 export interface IEnvironmentConfig {
-    opcPublisherModuleId: string;
     dpsProvisioningHost: string;
+    deviceId: string;
+    deviceCredentials: {
+        type: string;
+        connectionString: string;
+        idScope: string;
+        provisioningKey: string;
+        x509Certificate: string;
+    };
 }
 
 export interface ICameraBrokerPluginModule {
-    environmentConfig: IEnvironmentConfig;
+    env: IEnvironmentConfig;
 }
 
 export class CameraBrokerPlugin implements HapiPlugin {
@@ -65,15 +82,13 @@ export class CameraBrokerPlugin implements HapiPlugin {
 }
 
 class CameraBrokerPluginModule implements ICameraBrokerPluginModule {
-    // @ts-ignore
     private server: Server;
 
     constructor(server: Server) {
         this.server = server;
     }
 
-    public environmentConfig: IEnvironmentConfig = {
-        opcPublisherModuleId: process.env.opcPublisherModuleId || 'opcpublisher',
+    public env: IEnvironmentConfig = {
         dpsProvisioningHost: process.env.dpsProvisioningHost || 'global.azure-devices-provisioning.net'
     };
 }
